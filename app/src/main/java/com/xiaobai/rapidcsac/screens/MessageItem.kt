@@ -10,16 +10,20 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,7 +55,12 @@ fun MessageItem(
     select: () -> Unit = {},
     voiceContent: @Composable (() -> Unit)? = null,
     mediaTag: String = "",
+    pat: (() -> Unit)? = null,
 ) {
+    if (message.isNotice) {
+        ConversationNotice(message, selectionMode, selected, select, menu)
+        return
+    }
     val scope = rememberCoroutineScope()
     val reduce = LocalReducedMotion.current
     val density = LocalDensity.current
@@ -110,11 +119,28 @@ fun MessageItem(
                 Modifier.padding(end = 8.dp).size(44.dp),
             )
         if (!own && group) {
-            IconButton(
-                onClick = if (selectionMode) select else sender,
-                modifier = Modifier.padding(end = 6.dp),
-                minHeight = 44.dp,
-                minWidth = 44.dp,
+            Box(
+                Modifier.padding(end = 6.dp)
+                    .size(44.dp)
+                    .combinedClickable(
+                        role = Role.Button,
+                        onClickLabel = if (selectionMode) "选择消息" else "查看资料",
+                        onClick = if (selectionMode) select else sender,
+                        onDoubleClick = if (selectionMode) null else pat,
+                    )
+                    .semantics {
+                        contentDescription =
+                            "${message.name.ifEmpty { "UID ${message.sender}" }}的头像"
+                        if (pat != null && !selectionMode)
+                            customActions =
+                                listOf(
+                                    CustomAccessibilityAction("拍一拍") {
+                                        pat()
+                                        true
+                                    }
+                                )
+                    },
+                contentAlignment = Alignment.Center,
             ) {
                 Avatar(message.name, resolve(message.avatar), 32)
             }
@@ -242,5 +268,52 @@ fun MessageItem(
                 if (own) MessageReceipt(!group && message.read, delivery = message.delivery)
             }
         }
+    }
+}
+
+@Composable
+private fun ConversationNotice(
+    message: Message,
+    selectionMode: Boolean,
+    selected: Boolean,
+    select: () -> Unit,
+    menu: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .background(
+                if (selected) MiuixTheme.colorScheme.primary.copy(alpha = .08f)
+                else androidx.compose.ui.graphics.Color.Transparent
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (selectionMode)
+            Checkbox(
+                if (selected) ToggleableState.On else ToggleableState.Off,
+                select,
+                Modifier.size(44.dp),
+            )
+        Box(
+            Modifier.weight(1f).padding(horizontal = 20.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                message.text.ifBlank { message.preview },
+                Modifier.background(
+                        MiuixTheme.colorScheme.onSurface.copy(alpha = .06f),
+                        RoundedCornerShape(12.dp),
+                    )
+                    .combinedClickable(
+                        onClick = if (selectionMode) select else menu,
+                        onLongClick = if (selectionMode) select else menu,
+                    )
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                textAlign = TextAlign.Center,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+        }
+        if (selectionMode) Spacer(Modifier.width(44.dp))
     }
 }

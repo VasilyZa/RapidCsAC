@@ -2,6 +2,7 @@ package com.xiaobai.rapidcsac.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -109,6 +110,37 @@ fun ChatScreen(
     var typing by remember { mutableStateOf(false) }
     val media = remember(repo, key) { ChatMedia(context.applicationContext, repo, key) }
     val connection by repo.connection.collectAsStateWithLifecycle()
+    var patting by remember(repo, key) { mutableStateOf(false) }
+    var lastPatAt by remember(repo, key) { mutableLongStateOf(0L) }
+
+    fun pat(sender: Long) {
+        if (
+            !group ||
+                banned ||
+                selected.isNotEmpty() ||
+                sender <= 0 ||
+                sender == repo.account.uid ||
+                connection != ConnectionState.CONNECTED ||
+                patting
+        )
+            return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastPatAt < 1000) return
+        lastPatAt = now
+        patting = true
+        scope.launch {
+            try {
+                repo.execute("message/send_pat_msg", json("room_id" to id, "target_uid" to sender))
+            } catch (failure: CancellationException) {
+                throw failure
+            } catch (failure: Exception) {
+                ui.inform(failure.message ?: "拍一拍失败，请重试")
+            } finally {
+                patting = false
+            }
+        }
+    }
+
     val messageFlow = remember(repo, key, limit, before) { repo.messages(key, limit, before) }
     val messages by messageFlow.collectAsStateWithLifecycle(emptyList())
     val reversed = remember(messages) { messages.asReversed() }
@@ -585,7 +617,7 @@ fun ChatScreen(
             items(
                 reversed,
                 key = { if (it.clientKey.isEmpty()) "message:${it.id}" else it.clientKey },
-                contentType = { "message" },
+                contentType = { if (it.isNotice) "notice" else "message" },
             ) { message ->
                 MessageItem(
                     message,
@@ -651,6 +683,15 @@ fun ChatScreen(
                     select = { toggleSelection(message) },
                     voiceContent = { VoiceMessage(message, media) },
                     mediaTag = "${repo.account.key}:$key:${message.id}",
+                    pat =
+                        if (
+                            group &&
+                                !banned &&
+                                message.sender > 0 &&
+                                message.sender != repo.account.uid
+                        ) {
+                            { pat(message.sender) }
+                        } else null,
                 )
                 if (message.id == unreadBoundary)
                     Text(

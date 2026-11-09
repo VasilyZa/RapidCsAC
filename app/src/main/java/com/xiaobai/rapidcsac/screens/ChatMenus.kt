@@ -38,7 +38,14 @@ fun messageMenu(
     }
     val group = key.startsWith("g:")
     val id = key.substringAfter(':').toLong()
-    val actions = mutableListOf(ActionItem("查看发送者", "person") { nav.detail(false, message.sender) })
+    val actions = mutableListOf<ActionItem>()
+    if (!message.isNotice)
+        actions += ActionItem("查看发送者", "person") { nav.detail(false, message.sender) }
+    if (message.isNotice)
+        actions +=
+            ActionItem("复制", "copy") {
+                copyText(context, message.text.ifBlank { message.preview })
+            }
     actions += ActionItem("多选", "check") { select(message) }
     actions +=
         ActionItem("从本机删除", "delete", true) {
@@ -47,8 +54,10 @@ fun messageMenu(
             }
         }
     if (!message.recalled) {
-        actions.add(0, ActionItem("回复", "reply") { reply(message) })
-        actions += ActionItem("复制", "copy") { copyText(context, message.text) }
+        if (!message.isNotice) {
+            actions.add(0, ActionItem("回复", "reply") { reply(message) })
+            actions += ActionItem("复制", "copy") { copyText(context, message.text) }
+        }
         if (message.type in setOf(1, 2, 3, 5, 6))
             actions +=
                 ActionItem("转发", "share") { forwardMessages(listOf(message), repo, ui, context) }
@@ -76,7 +85,7 @@ fun messageMenu(
                         if (repo.activeConversation == key) repo.openConversation(key)
                     }
                 }
-        if (group)
+        if (group && !message.isNotice)
             actions +=
                 ActionItem(if (message.essence) "取消精华" else "设为精华", "heart") {
                     ui.launch {

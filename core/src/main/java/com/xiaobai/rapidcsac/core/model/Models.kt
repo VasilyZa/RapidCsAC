@@ -83,6 +83,9 @@ data class Message(
     val delivery: String = "",
     val raw: String = "{}",
 ) {
+    val isNotice: Boolean
+        get() = type == 4 || recalled
+
     val preview: String
         get() =
             when {
