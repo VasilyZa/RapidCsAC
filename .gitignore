@@ -1,0 +1,14 @@
+.gradle/
+.kotlin/
+.idea/
+**/build/
+.local/
+local.properties
+*.jks
+*.keystore
+key.properties
+docs/superpowers/
+*.log
+**/src/test/
+**/src/androidTest/
+**/src/testFixtures/

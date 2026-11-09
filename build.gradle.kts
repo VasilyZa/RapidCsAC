@@ -1,0 +1,20 @@
+buildscript {
+    repositories {
+        if (providers.gradleProperty("csacMirror").orNull == "true") {
+            maven("https://maven.aliyun.com/repository/central")
+            maven("https://maven.aliyun.com/repository/google")
+        }
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20")
+    }
+}
+
+plugins {
+    id("com.android.application") version "9.5.1" apply false
+    id("com.android.library") version "9.5.1" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20" apply false
+    id("com.mikepenz.aboutlibraries.plugin.android") version "15.3.0" apply false
+}

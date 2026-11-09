@@ -1,0 +1,14 @@
+{
+  "uniqueId": "publicsuffix.org:public-suffix-list",
+  "artifactVersion": "bundled with OkHttp 4.12.0",
+  "name": "Public Suffix List",
+  "website": "https://publicsuffix.org/list/",
+  "developers": [
+    {
+      "name": "Public Suffix List contributors"
+    }
+  ],
+  "licenses": [
+    "MPL-2.0"
+  ]
+}

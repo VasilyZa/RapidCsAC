@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.RapidCsAC" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="colorAccent">#4169D8</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">@color/app_background</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
+    <string name="app_name">RapidCsAC</string>
+</resources>
