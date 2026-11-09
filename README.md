@@ -22,7 +22,19 @@ Android 原生聊天客户端，应用 ID 为 `com.xiaobai.rapidcsac`，默认�
 
 网络需要 Maven 镜像时可增加 `-PcsacMirror=true`。
 
-预览包位于 `app/build/outputs/apk/preview/app-preview.apk`，启用 R8 与资源压缩，使用本机调试签名。正式发布需配置自有签名密钥。
+预览包位于 `app/build/outputs/apk/preview/app-preview.apk`，启用 R8 与资源压缩，使用本机调试签名。
+
+## CI 与正式发布
+
+`main` 推送会运行 Debug 构建与 Lint 检查，并生成固定签名的 Release APK，保存在对应 Actions 运行的 `signed-apk` 制品中。PR 执行构建与 Lint 检查。工作流支持从 `main` 手动运行。
+
+仓库通过 GitHub Actions Secrets 提供 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`。签名时将密钥临时还原到 Runner 私有目录，完成后清除。每次构建都会将 APK 的签名证书与 `.github/signing-certificate.sha256` 核对。
+
+本机构建正式包时，设置 `ANDROID_KEYSTORE_PATH`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`，然后运行 `./gradlew :app:assembleRelease`。签名配置从环境变量读取。
+
+发布新版本时，在 `app/build.gradle.kts` 中更新 `versionName`，递增 `versionCode`，将提交推送到 `main`，再推送对应的 `vX.Y.Z` 标签。CI 会核对版本号与标签、确认提交属于 `main`，随后自动创建 GitHub Release，附带签名 APK、SHA-256 校验文件、签名证书指纹与 AGPLv3 许可证。
+
+首次从调试签名预览包切换到正式版时，需要先卸载预览包再安装正式 APK。后续正式版本使用同一密钥签名，可覆盖升级。
 
 ## 运行
 
