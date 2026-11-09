@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xiaobai.rapidcsac.AppGraph
+import com.xiaobai.rapidcsac.BuildConfig
 import com.xiaobai.rapidcsac.core.data.ChatRepository
 import com.xiaobai.rapidcsac.core.model.Conversation
 import com.xiaobai.rapidcsac.core.network.ConnectionState
@@ -294,7 +295,7 @@ fun HomeScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Nav
                 }
                 item {
                     Text(
-                        "RapidCsAC 0.1.0",
+                        "RapidCsAC ${BuildConfig.VERSION_NAME}",
                         Modifier.fillMaxWidth().padding(top = 18.dp),
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         fontSize = 13.sp,

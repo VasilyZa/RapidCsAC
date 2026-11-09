@@ -17,6 +17,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xiaobai.rapidcsac.AppGraph
+import com.xiaobai.rapidcsac.BuildConfig
 import com.xiaobai.rapidcsac.core.data.ChatRepository
 import com.xiaobai.rapidcsac.core.network.flag
 import com.xiaobai.rapidcsac.core.network.json
@@ -286,7 +287,8 @@ fun SettingsScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav:
                     MenuRow("开源许可", "第三方库与许可全文", "file") { nav.open("licenses") }
                     BasicComponent(
                         title = "RapidCsAC",
-                        summary = "0.1.0 · ${repo.account.origin.removePrefix("https://")}",
+                        summary =
+                            "${BuildConfig.VERSION_NAME} · ${repo.account.origin.removePrefix("https://")}",
                     )
                 }
             }
