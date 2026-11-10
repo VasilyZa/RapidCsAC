@@ -1,15 +1,25 @@
 package com.xiaobai.rapidcsac.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.xiaobai.rapidcsac.core.data.ChatRepository
+import com.xiaobai.rapidcsac.core.network.ConnectionLost
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -55,10 +65,16 @@ fun SectionLabel(text: String) {
 }
 
 @Composable
-fun MenuRow(title: String, summary: String? = null, icon: String = "", onClick: () -> Unit) {
+fun MenuRow(
+    title: String,
+    summary: String? = null,
+    icon: String = "",
+    badge: Int = 0,
+    onClick: () -> Unit,
+) {
     ArrowPreference(
         title = title,
-        summary = summary,
+        summary = summary?.takeIf { it.isNotBlank() },
         startAction =
             if (icon.isEmpty()) null
             else {
@@ -71,8 +87,29 @@ fun MenuRow(title: String, summary: String? = null, icon: String = "", onClick: 
                     )
                 }
             },
+        endActions = { UnreadBadge(badge) },
         onClick = onClick,
     )
+}
+
+@Composable
+fun UnreadBadge(count: Int) {
+    if (count <= 0) return
+    Box(
+        Modifier.semantics(mergeDescendants = true) {
+                contentDescription = "$count 条待处理"
+            }
+            .background(MiuixTheme.colorScheme.error, CircleShape)
+            .defaultMinSize(minWidth = 22.dp, minHeight = 22.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            if (count > 99) "99+" else count.toString(),
+            fontSize = 12.sp,
+            color = MiuixTheme.colorScheme.onError,
+        )
+    }
 }
 
 @Stable
@@ -96,18 +133,33 @@ class RemoteData<T> {
 @Composable
 fun <T> rememberRemote(vararg keys: Any?, load: suspend () -> T): RemoteData<T> {
     val remote = remember(*keys) { RemoteData<T>() }
+    // Repository-backed loads can retry after the next successful synchronization.
+    val repo = keys.firstOrNull { it is ChatRepository } as? ChatRepository
     val currentLoad by rememberUpdatedState(load)
     LaunchedEffect(remote, remote.revision) {
+        val revision = remote.revision
+        val generation = repo?.readyGeneration?.value ?: 0L
         remote.loading = true
         remote.error = ""
         try {
             remote.value = currentLoad()
-        } catch (failure: CancellationException) {
-            throw failure
         } catch (failure: Exception) {
-            remote.error = failure.message ?: "加载失败"
+            if (failure is CancellationException && failure !is TimeoutCancellationException)
+                throw failure
+            currentCoroutineContext().ensureActive()
+            remote.error =
+                if (failure is TimeoutCancellationException) "加载超时，请重试"
+                else failure.message ?: "加载失败"
+            if (
+                repo != null &&
+                    (failure is ConnectionLost || failure is TimeoutCancellationException)
+            ) {
+                remote.loading = false
+                repo.readyGeneration.first { it > generation }
+                remote.reload()
+            }
         } finally {
-            remote.loading = false
+            if (remote.revision == revision) remote.loading = false
         }
     }
     return remote

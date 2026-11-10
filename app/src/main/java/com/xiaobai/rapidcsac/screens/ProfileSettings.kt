@@ -26,7 +26,6 @@ import com.xiaobai.rapidcsac.platform.MediaFiles
 import com.xiaobai.rapidcsac.ui.*
 import kotlinx.coroutines.withTimeout
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -157,8 +156,6 @@ fun ProfileScreen(repo: ChatRepository, ui: UiController, nav: Navigation) {
 @Composable
 fun SettingsScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Navigation) {
     val context = LocalContext.current
-    val theme by graph.theme.collectAsStateWithLifecycle()
-    val reduce by graph.reducedMotion.collectAsStateWithLifecycle()
     val locked by graph.lockEnabled.collectAsStateWithLifecycle()
     var notifications by remember {
         mutableStateOf(
@@ -169,7 +166,6 @@ fun SettingsScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav:
     var background by remember {
         mutableStateOf(graph.preferences.getBoolean("background_sync", false))
     }
-    var enterSend by remember { mutableStateOf(graph.preferences.getBoolean("enter_send", false)) }
     val permission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             notifications = granted
@@ -178,36 +174,8 @@ fun SettingsScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav:
     Page("设置", nav::back) { padding ->
         PageList(padding) {
             item {
-                SectionLabel("外观与交互")
                 Card {
-                    OverlaySpinnerPreference(
-                        items = listOf("跟随系统", "浅色", "深色").map { DropdownItem(text = it) },
-                        selectedIndex =
-                            listOf("system", "light", "dark").indexOf(theme).coerceAtLeast(0),
-                        title = "外观",
-                        onSelectedIndexChange = {
-                            graph.preferences
-                                .edit()
-                                .putString("theme", listOf("system", "light", "dark")[it])
-                                .apply()
-                            graph.applyTheme()
-                        },
-                    )
-                    SwitchPreference(
-                        checked = reduce,
-                        onCheckedChange = graph::setReducedMotion,
-                        title = "减少动态效果",
-                        summary = "简化页面与弹层动画",
-                    )
-                    SwitchPreference(
-                        checked = enterSend,
-                        onCheckedChange = {
-                            enterSend = it
-                            graph.preferences.edit().putBoolean("enter_send", it).apply()
-                        },
-                        title = "回车键发送",
-                        summary = "关闭时使用回车换行",
-                    )
+                    MenuRow("个性化", "主题、文字、聊天样式与交互") { nav.open("personalization") }
                 }
             }
             item {
@@ -265,14 +233,14 @@ fun SettingsScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav:
             item {
                 SectionLabel("数据与支持")
                 Card {
-                    MenuRow("清理消息缓存", "保留待发送消息", "file") {
+                    MenuRow("清理消息缓存", "保留待发送消息") {
                         ui.confirm("清理本机缓存", "清理此账户在本机缓存的消息记录？") {
                             repo.clearCache()
                             ui.inform("缓存已清理")
                         }
                     }
-                    MenuRow("连接与本机数据", icon = "refresh") { nav.open("diagnostics") }
-                    MenuRow("问题反馈", icon = "chat") {
+                    MenuRow("网络诊断") { nav.open("diagnostics") }
+                    MenuRow("问题反馈") {
                         ui.edit(
                             "问题反馈",
                             listOf(
@@ -284,7 +252,7 @@ fun SettingsScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav:
                             ui.inform("反馈已提交")
                         }
                     }
-                    MenuRow("开源许可", "第三方库与许可全文", "file") { nav.open("licenses") }
+                    MenuRow("开源许可", "第三方库与许可全文") { nav.open("licenses") }
                     BasicComponent(
                         title = "RapidCsAC",
                         summary =

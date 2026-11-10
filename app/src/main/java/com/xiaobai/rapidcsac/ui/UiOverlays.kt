@@ -1,13 +1,17 @@
 package com.xiaobai.rapidcsac.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
@@ -15,7 +19,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -26,8 +29,7 @@ fun UiOverlays(ui: UiController) {
     var retainedText by remember { mutableStateOf("") }
     LaunchedEffect(ui.textViewer) { ui.textViewer?.let { retainedText = it } }
     if (ui.textViewer != null || retainedText.isNotEmpty())
-        OverlayBottomSheet(
-            modifier = Modifier.navigationBarsPadding(),
+        CompactSheet(
             show = ui.textViewer != null,
             title = "选择文字",
             onDismissRequest = { ui.textViewer = null },
@@ -50,11 +52,9 @@ fun UiOverlays(ui: UiController) {
     LaunchedEffect(ui.confirmation) { ui.confirmation?.let { lastConfirmation = it } }
     val menu = ui.menu ?: lastMenu
     if (menu != null)
-        OverlayBottomSheet(
-            modifier = Modifier.navigationBarsPadding(),
+        CompactSheet(
             show = ui.menu != null,
             title = menu.title,
-            startAction = { RapidIconButton("close", "关闭") { ui.menu = null } },
             onDismissRequest = { ui.menu = null },
             onDismissFinished = { if (ui.menu == null) lastMenu = null },
         ) {
@@ -62,29 +62,35 @@ fun UiOverlays(ui: UiController) {
             key(menu) {
                 LazyColumn(Modifier.heightIn(max = maximumHeight)) {
                     itemsIndexed(menu.actions) { _, action ->
-                        BasicComponent(
-                            startAction = {
-                                Icon(
-                                    rapidIcon(action.icon),
-                                    null,
-                                    Modifier.size(24.dp),
-                                    tint =
-                                        if (action.destructive) MiuixTheme.colorScheme.error
-                                        else MiuixTheme.colorScheme.onSurface,
-                                )
+                        CompactSheetRow(
+                            title = action.title,
+                            destructive = action.destructive,
+                            leading = {
+                                if (action.swatchColor != null)
+                                    Box(
+                                        Modifier.size(24.dp)
+                                            .background(Color(action.swatchColor), CircleShape)
+                                            .border(
+                                                1.dp,
+                                                MiuixTheme.colorScheme.outline,
+                                                CircleShape,
+                                            )
+                                    )
+                                else
+                                    Icon(
+                                        rapidIcon(action.icon),
+                                        null,
+                                        Modifier.size(24.dp),
+                                        tint =
+                                            if (action.destructive) MiuixTheme.colorScheme.error
+                                            else MiuixTheme.colorScheme.onSurface,
+                                    )
                             },
                             onClick = {
                                 ui.menu = null
                                 action.run()
                             },
-                        ) {
-                            Text(
-                                action.title,
-                                color =
-                                    if (action.destructive) MiuixTheme.colorScheme.error
-                                    else MiuixTheme.colorScheme.onSurface,
-                            )
-                        }
+                        )
                     }
                 }
             }
@@ -101,18 +107,17 @@ fun UiOverlays(ui: UiController) {
             }
             val scope = rememberCoroutineScope()
             val focus = LocalFocusManager.current
-            OverlayBottomSheet(
-                modifier = Modifier.navigationBarsPadding(),
+            CompactSheet(
                 show = ui.editor != null,
                 title = editor.title,
-                startAction = { RapidIconButton("close", "取消", !busy) { ui.editor = null } },
+                dismissLabel = "取消",
                 allowDismiss = !busy,
                 onDismissRequest = { if (!busy) ui.editor = null },
                 onDismissFinished = { if (ui.editor == null) lastEditor = null },
             ) {
                 Column(
                     Modifier.imePadding().verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     editor.fields
                         .filter { field ->
@@ -129,6 +134,8 @@ fun UiOverlays(ui: UiController) {
                                                 field.choices.indices
                                             ),
                                         title = field.label,
+                                        insideMargin =
+                                            PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                         enabled = !busy,
                                         onSelectedIndexChange = {
                                             values[field.key] = it.toString()
@@ -138,6 +145,8 @@ fun UiOverlays(ui: UiController) {
                                     SwitchPreference(
                                         checked = values[field.key] == "1",
                                         title = field.label,
+                                        insideMargin =
+                                            PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                         enabled = !busy,
                                         onCheckedChange = {
                                             values[field.key] = if (it) "1" else "0"

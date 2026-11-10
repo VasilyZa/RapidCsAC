@@ -253,6 +253,8 @@ private fun AccountNavigation(
                     SearchScreen(repo, ui, nav, entry.arguments!!.getString("key")!!)
                 }
                 composable("settings") { SettingsScreen(graph, repo, ui, nav) }
+                composable("personalization") { PersonalizationScreen(graph, ui, nav) }
+                composable("message-display") { MessageDisplayScreen(graph, ui, nav) }
                 composable("licenses") { LicensesScreen(nav) }
                 composable("licenses/{id}") { entry ->
                     LicenseDetailScreen(entry.arguments!!.getString("id")!!, ui, nav)

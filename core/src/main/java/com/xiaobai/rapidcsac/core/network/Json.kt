@@ -30,4 +30,5 @@ fun JSONObject.flag(key: String): Boolean = optBoolean(key, false) || optString(
 class ApiFailure(val code: Int, override val message: String, val details: JSONObject? = null) :
     Exception(message)
 
-class ConnectionLost(message: String = "连接已断开，请稍后重试") : Exception(message)
+class ConnectionLost(message: String = "连接已断开，请稍后重试", cause: Throwable? = null) :
+    Exception(message, cause)

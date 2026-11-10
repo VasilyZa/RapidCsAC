@@ -323,7 +323,7 @@ fun DetailScreen(
                                     }
                                 MenuRow("共同群组") { nav.records("common", id) }
                                 MenuRow("创建的群组") { nav.records("created", id) }
-                                MenuRow("分享名片", icon = "share") { nav.qr("rapidcsac://user/$id") }
+                                MenuRow("分享名片") { nav.qr("rapidcsac://user/$id") }
                             }
                         }
                         if (friend || value.flag("is_blocked"))

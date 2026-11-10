@@ -32,6 +32,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xiaobai.rapidcsac.AppGraph
 import com.xiaobai.rapidcsac.core.data.ChatRepository
+import com.xiaobai.rapidcsac.core.format.GroupSenderFormatter
+import com.xiaobai.rapidcsac.core.format.MessageTimeFormatter
 import com.xiaobai.rapidcsac.core.model.Message
 import com.xiaobai.rapidcsac.core.network.*
 import com.xiaobai.rapidcsac.platform.*
@@ -40,7 +42,9 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -55,7 +59,22 @@ fun ChatScreen(
     target: Long,
 ) {
     val context = LocalContext.current
+    val personalization = LocalPersonalization.current
+    val enterSend = graph.preferences.getBoolean("enter_send", false)
     val scope = rememberCoroutineScope()
+    val display by graph.messageDisplay.style.collectAsStateWithLifecycle()
+    val dateContext = rememberMessageDateContext()
+    val timeFormatter =
+        remember(display.time, dateContext) {
+            MessageTimeFormatter(
+                display.time,
+                dateContext.nowMillis,
+                dateContext.zone,
+                dateContext.locale,
+            )
+        }
+    val senderFormatter =
+        remember(display.senderPattern) { GroupSenderFormatter(display.senderPattern) }
     val group = key.startsWith("g:")
     val id = remember(key) { key.substringAfter(':').toLong() }
     val conversations by repo.conversations.collectAsStateWithLifecycle()
@@ -83,9 +102,10 @@ fun ChatScreen(
     var notice by remember(key) { mutableStateOf("") }
     LaunchedEffect(repo, key) {
         if (!group) return@LaunchedEffect
-        repo.updates
-            .onStart { emit(setOf("group.initial")) }
-            .filter { types -> types.any { it.startsWith("group.") } }
+        merge(
+                repo.updates.filter { types -> types.any { it.startsWith("group.") } }.map { Unit },
+                repo.readyGeneration.filter { it > 0 }.map { Unit },
+            )
             .collectLatest {
                 try {
                     withTimeout(15_000) {
@@ -96,6 +116,8 @@ fun ChatScreen(
                                 .getJSONObject("room")
                                 .optString("notice")
                     }
+                } catch (failure: TimeoutCancellationException) {
+                    currentCoroutineContext().ensureActive()
                 } catch (failure: CancellationException) {
                     throw failure
                 } catch (_: Exception) {
@@ -584,7 +606,7 @@ fun ChatScreen(
                             modifier =
                                 Modifier.weight(1f).onPreviewKeyEvent { event ->
                                     if (
-                                        graph.preferences.getBoolean("enter_send", false) &&
+                                        enterSend &&
                                             event.key == Key.Enter &&
                                             event.type == KeyEventType.KeyDown &&
                                             !event.isShiftPressed
@@ -596,8 +618,11 @@ fun ChatScreen(
                             label = if (banned) "群组已被封禁" else "消息",
                             enabled = !banned,
                             maxLines = 5,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                            keyboardActions = KeyboardActions(onSend = { send() }),
+                            keyboardOptions =
+                                KeyboardOptions(
+                                    imeAction = if (enterSend) ImeAction.Send else ImeAction.Default
+                                ),
+                            keyboardActions = KeyboardActions(onSend = { if (enterSend) send() }),
                         )
                         if (text.isNotBlank())
                             RapidIconButton("send", "发送消息", !sending && !banned, ::send)
@@ -607,115 +632,148 @@ fun ChatScreen(
             }
         },
     ) { padding ->
-        LazyColumn(
-            Modifier.fillMaxSize().padding(padding),
-            state = list,
-            reverseLayout = true,
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Bottom),
-        ) {
-            items(
-                reversed,
-                key = { if (it.clientKey.isEmpty()) "message:${it.id}" else it.clientKey },
-                contentType = { if (it.isNotice) "notice" else "message" },
-            ) { message ->
-                MessageItem(
-                    message,
-                    message.sender == repo.account.uid,
-                    group,
-                    repo::avatarUrl,
-                    open = {
-                        when {
-                            message.clientKey.isNotEmpty() ->
-                                messageMenu(
-                                    message,
-                                    repo,
-                                    ui,
-                                    nav,
-                                    key,
-                                    context,
-                                    select = ::toggleSelection,
-                                ) {
-                                    reply = it
-                                }
-                            message.image.isNotEmpty() ->
-                                nav.image(
-                                    repo.media.resolve(message.image),
-                                    "${repo.account.key}:$key:${message.id}",
-                                )
-                            message.type == 3 -> media.play(message)
-                            message.type == 6 && message.file.isNotEmpty() ->
-                                ui.launch {
-                                    openAttachment(context, repo, message.file, message.fileName)
-                                }
-                            else ->
-                                messageMenu(
-                                    message,
-                                    repo,
-                                    ui,
-                                    nav,
-                                    key,
-                                    context,
-                                    select = ::toggleSelection,
-                                ) {
-                                    reply = it
-                                }
+        ChatBackdrop(Modifier.fillMaxSize().padding(padding)) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                state = list,
+                reverseLayout = true,
+                contentPadding = PaddingValues(vertical = 16.dp),
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        if (personalization.compact) 8.dp else 12.dp,
+                        Alignment.Bottom,
+                    ),
+            ) {
+                items(
+                    reversed,
+                    key = { if (it.clientKey.isEmpty()) "message:${it.id}" else it.clientKey },
+                    contentType = { if (it.isNotice) "notice" else "message" },
+                ) { message ->
+                    val senderLabel =
+                        remember(message.name, message.sender, message.raw, senderFormatter) {
+                            val metadata = JSONObject(message.raw)
+                            senderFormatter.format(
+                                message.name,
+                                metadata.firstText("member_title", "title"),
+                                message.sender,
+                                metadata
+                                    .firstText("member_level", "level")
+                                    .takeUnless { it == "0" }
+                                    .orEmpty(),
+                            )
                         }
-                    },
-                    menu = {
-                        messageMenu(
-                            message,
-                            repo,
-                            ui,
-                            nav,
-                            key,
-                            context,
-                            select = ::toggleSelection,
-                        ) {
-                            reply = it
-                        }
-                    },
-                    reply = { reply = message },
-                    jump = { jump(it) },
-                    sender = { nav.detail(false, message.sender) },
-                    selectionMode = selected.isNotEmpty(),
-                    selected = message.id in selected,
-                    select = { toggleSelection(message) },
-                    voiceContent = { VoiceMessage(message, media) },
-                    mediaTag = "${repo.account.key}:$key:${message.id}",
-                    pat =
-                        if (
-                            group &&
-                                !banned &&
-                                message.sender > 0 &&
-                                message.sender != repo.account.uid
-                        ) {
-                            { pat(message.sender) }
-                        } else null,
-                )
-                if (message.id == unreadBoundary)
-                    Text(
-                        "以下是未读消息",
-                        Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                        fontSize = 12.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        color = MiuixTheme.colorScheme.primary,
+                    MessageItem(
+                        message,
+                        message.sender == repo.account.uid,
+                        group,
+                        repo::avatarUrl,
+                        timeLabel =
+                            remember(message.time, timeFormatter) {
+                                timeFormatter.format(message.time)
+                            },
+                        senderLabel = senderLabel,
+                        open = {
+                            when {
+                                message.clientKey.isNotEmpty() ->
+                                    messageMenu(
+                                        message,
+                                        repo,
+                                        ui,
+                                        nav,
+                                        key,
+                                        context,
+                                        select = ::toggleSelection,
+                                    ) {
+                                        reply = it
+                                    }
+                                message.image.isNotEmpty() ->
+                                    nav.image(
+                                        repo.media.resolve(message.image),
+                                        "${repo.account.key}:$key:${message.id}",
+                                    )
+                                message.type == 3 -> media.play(message)
+                                message.type == 6 && message.file.isNotEmpty() ->
+                                    ui.launch {
+                                        openAttachment(
+                                            context,
+                                            repo,
+                                            message.file,
+                                            message.fileName,
+                                        )
+                                    }
+                                else ->
+                                    messageMenu(
+                                        message,
+                                        repo,
+                                        ui,
+                                        nav,
+                                        key,
+                                        context,
+                                        select = ::toggleSelection,
+                                    ) {
+                                        reply = it
+                                    }
+                            }
+                        },
+                        menu = {
+                            messageMenu(
+                                message,
+                                repo,
+                                ui,
+                                nav,
+                                key,
+                                context,
+                                select = ::toggleSelection,
+                            ) {
+                                reply = it
+                            }
+                        },
+                        reply = { reply = message },
+                        jump = { jump(it) },
+                        sender = { nav.detail(false, message.sender) },
+                        selectionMode = selected.isNotEmpty(),
+                        selected = message.id in selected,
+                        select = { toggleSelection(message) },
+                        voiceContent = { VoiceMessage(message, media) },
+                        mediaTag = "${repo.account.key}:$key:${message.id}",
+                        pat =
+                            if (
+                                group &&
+                                    !banned &&
+                                    message.sender > 0 &&
+                                    message.sender != repo.account.uid
+                            ) {
+                                { pat(message.sender) }
+                            } else null,
                     )
-            }
-            if (messages.isEmpty())
-                item {
-                    EmptyContent("开始聊天", "发送第一条消息", modifier = Modifier.padding(vertical = 32.dp))
+                    if (message.id == unreadBoundary)
+                        Text(
+                            "以下是未读消息",
+                            Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                            fontSize = 12.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            color = MiuixTheme.colorScheme.primary,
+                        )
                 }
-            if (messages.count { it.id > 0 } >= 80 && more)
-                item {
-                    Button(
-                        { loadOlder() },
-                        Modifier.fillMaxWidth(),
-                        enabled = !loadingOlder && !banned,
-                    ) {
-                        Text(if (loadingOlder) "加载中…" else "加载更早的消息")
+                if (messages.isEmpty())
+                    item {
+                        EmptyContent(
+                            "开始聊天",
+                            "发送第一条消息",
+                            modifier = Modifier.padding(vertical = 32.dp),
+                        )
                     }
-                }
+                if (messages.count { it.id > 0 } >= 80 && more)
+                    item {
+                        Button(
+                            { loadOlder() },
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            enabled = !loadingOlder && !banned,
+                        ) {
+                            Text(if (loadingOlder) "加载中…" else "加载更早的消息")
+                        }
+                    }
+            }
         }
     }
 }

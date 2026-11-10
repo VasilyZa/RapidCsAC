@@ -32,6 +32,7 @@ data class ActionItem(
     val title: String,
     val icon: String = "next",
     val destructive: Boolean = false,
+    val swatchColor: Int? = null,
     val run: () -> Unit,
 )
 

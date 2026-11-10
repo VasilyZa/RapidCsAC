@@ -29,11 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.xiaobai.rapidcsac.core.model.Message
-import com.xiaobai.rapidcsac.core.network.firstText
 import com.xiaobai.rapidcsac.ui.*
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
@@ -45,6 +41,8 @@ fun MessageItem(
     own: Boolean,
     group: Boolean,
     resolve: (String) -> String,
+    timeLabel: String,
+    senderLabel: String,
     open: () -> Unit,
     menu: () -> Unit,
     reply: () -> Unit,
@@ -62,6 +60,16 @@ fun MessageItem(
         return
     }
     val scope = rememberCoroutineScope()
+    val personalization = LocalPersonalization.current
+    val canPat = pat != null && personalization.enablePat
+    val metadataSurface =
+        if (LocalChatWallpaper.current != null)
+            Modifier.background(
+                    MiuixTheme.colorScheme.surface.copy(alpha = .9f),
+                    RoundedCornerShape(6.dp),
+                )
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+        else Modifier
     val reduce = LocalReducedMotion.current
     val density = LocalDensity.current
     val maximum = with(density) { 80.dp.toPx() }
@@ -108,7 +116,8 @@ fun MessageItem(
                         }
                 },
             )
-            .graphicsLayer { translationX = offset },
+            .graphicsLayer { translationX = offset }
+            .padding(horizontal = 16.dp),
         horizontalArrangement = if (own) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Top,
     ) {
@@ -118,7 +127,7 @@ fun MessageItem(
                 select,
                 Modifier.padding(end = 8.dp).size(44.dp),
             )
-        if (!own && group) {
+        if (!own && group && personalization.showAvatars) {
             Box(
                 Modifier.padding(end = 6.dp)
                     .size(44.dp)
@@ -126,16 +135,16 @@ fun MessageItem(
                         role = Role.Button,
                         onClickLabel = if (selectionMode) "选择消息" else "查看资料",
                         onClick = if (selectionMode) select else sender,
-                        onDoubleClick = if (selectionMode) null else pat,
+                        onDoubleClick = if (selectionMode || !canPat) null else pat,
                     )
                     .semantics {
                         contentDescription =
                             "${message.name.ifEmpty { "UID ${message.sender}" }}的头像"
-                        if (pat != null && !selectionMode)
+                        if (canPat && !selectionMode)
                             customActions =
                                 listOf(
                                     CustomAccessibilityAction("拍一拍") {
-                                        pat()
+                                        pat?.invoke()
                                         true
                                     }
                                 )
@@ -149,13 +158,11 @@ fun MessageItem(
             Modifier.widthIn(max = 310.dp),
             horizontalAlignment = if (own) Alignment.End else Alignment.Start,
         ) {
-            if (group && !own)
+            if (group && !own && senderLabel.isNotBlank())
                 Text(
-                    message.name.ifEmpty { "UID ${message.sender}" } +
-                        org.json.JSONObject(message.raw).firstText("member_title", "title").let {
-                            if (it.isNotEmpty()) " · $it" else ""
-                        },
+                    senderLabel,
                     Modifier.padding(bottom = 4.dp)
+                        .then(metadataSurface)
                         .combinedClickable(onClick = clickMessage, onLongClick = holdMessage),
                     fontSize = 13.sp,
                     maxLines = 1,
@@ -163,16 +170,9 @@ fun MessageItem(
                     fontWeight = FontWeight.Medium,
                     color = MiuixTheme.colorScheme.primary,
                 )
-            Card(
+            ChatBubble(
+                own = own,
                 modifier = Modifier.widthIn(max = 310.dp),
-                cornerRadius = 16.dp,
-                colors =
-                    CardDefaults.defaultColors(
-                        color =
-                            if (own) MiuixTheme.colorScheme.primaryContainer
-                            else MiuixTheme.colorScheme.surfaceContainer
-                    ),
-                insideMargin = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 onClick = clickMessage,
                 onLongPress = holdMessage,
             ) {
@@ -245,7 +245,9 @@ fun MessageItem(
                 }
             }
             Row(
-                Modifier.padding(top = 4.dp)
+                Modifier.widthIn(max = 310.dp)
+                    .padding(top = 4.dp)
+                    .then(metadataSurface)
                     .combinedClickable(onClick = clickMessage, onLongClick = holdMessage),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -258,11 +260,11 @@ fun MessageItem(
                         tint = MiuixTheme.colorScheme.primary,
                     )
                 Text(
-                    remember(message.time) {
-                        SimpleDateFormat("HH:mm", Locale.getDefault())
-                            .format(Date(message.time * 1000))
-                    },
+                    timeLabel,
+                    Modifier.weight(1f, fill = false),
                     fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 if (own) MessageReceipt(!group && message.read, delivery = message.delivery)
@@ -284,7 +286,8 @@ private fun ConversationNotice(
             .background(
                 if (selected) MiuixTheme.colorScheme.primary.copy(alpha = .08f)
                 else androidx.compose.ui.graphics.Color.Transparent
-            ),
+            )
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (selectionMode)
@@ -300,7 +303,9 @@ private fun ConversationNotice(
             Text(
                 message.text.ifBlank { message.preview },
                 Modifier.background(
-                        MiuixTheme.colorScheme.onSurface.copy(alpha = .06f),
+                        if (LocalChatWallpaper.current == null)
+                            MiuixTheme.colorScheme.onSurface.copy(alpha = .06f)
+                        else MiuixTheme.colorScheme.surface.copy(alpha = .9f),
                         RoundedCornerShape(12.dp),
                     )
                     .combinedClickable(

@@ -1,24 +1,35 @@
 package com.xiaobai.rapidcsac.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -27,13 +38,19 @@ import com.xiaobai.rapidcsac.BuildConfig
 import com.xiaobai.rapidcsac.core.data.ChatRepository
 import com.xiaobai.rapidcsac.core.model.Conversation
 import com.xiaobai.rapidcsac.core.network.ConnectionState
+import com.xiaobai.rapidcsac.core.network.firstText
+import com.xiaobai.rapidcsac.platform.ConversationOrder
+import com.xiaobai.rapidcsac.platform.ConversationSubtitle
 import com.xiaobai.rapidcsac.ui.*
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
+import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.squircle.squircleBorder
+import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -65,6 +82,13 @@ fun HomeScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Nav
 
     val titles = remember { listOf("聊天", "联系人", "发现", "我") }
     val scrollBehavior = MiuixScrollBehavior()
+    val reduceMotion = LocalReducedMotion.current
+    val personalization = LocalPersonalization.current
+    val layoutDirection = LocalLayoutDirection.current
+    val largeTitleSize = MiuixTheme.textStyles.title1.fontSize
+    val smallTitleSize = MiuixTheme.textStyles.title3.fontSize
+    val collapsedTitleScale =
+        with(LocalDensity.current) { smallTitleSize.toPx() / largeTitleSize.toPx() }
     val listStates = List(4) { rememberLazyListState() }
     val textMeasurer = rememberTextMeasurer()
     val filterStyle =
@@ -80,24 +104,43 @@ fun HomeScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Nav
         with(LocalDensity.current) { maxOf(48.dp, filterText.size.height.toDp() + 24.dp) }
     BackHandler(tab != 0) { tab = 0 }
     val filtered =
-        remember(conversations, query, tab, chatFilter, contactFilter) {
-            conversations.filter { item ->
-                val match = item.name.contains(query, true) || item.id.toString().contains(query)
-                match &&
-                    if (tab == 1) item.group == (contactFilter == 1)
-                    else
-                        when (chatFilter) {
-                            1 ->
-                                (item.unread > 0 || item.markedUnread) &&
-                                    !item.archived &&
-                                    !item.hidden
-                            2 -> item.favorite && !item.hidden
-                            3 -> item.group && !item.archived && !item.hidden
-                            4 -> item.archived && !item.hidden
-                            5 -> item.hidden
-                            else -> !item.archived && !item.hidden
-                        }
-            }
+        remember(
+            conversations,
+            query,
+            tab,
+            chatFilter,
+            contactFilter,
+            personalization.conversationOrder,
+        ) {
+            conversations
+                .filter { item ->
+                    val match =
+                        item.name.contains(query, true) || item.id.toString().contains(query)
+                    match &&
+                        if (tab == 1) item.group == (contactFilter == 1)
+                        else
+                            when (chatFilter) {
+                                1 ->
+                                    (item.unread > 0 || item.markedUnread) &&
+                                        !item.archived &&
+                                        !item.hidden
+                                2 -> item.favorite && !item.hidden
+                                3 -> item.group && !item.archived && !item.hidden
+                                4 -> item.archived && !item.hidden
+                                5 -> item.hidden
+                                else -> !item.archived && !item.hidden
+                            }
+                }
+                .let { values ->
+                    if (tab == 0 && personalization.conversationOrder == ConversationOrder.TYPE)
+                        values.sortedWith(
+                            compareByDescending<Conversation> { it.pinned }
+                                .thenBy { it.group }
+                                .thenByDescending { it.updated }
+                                .thenBy { it.key }
+                        )
+                    else values
+                }
         }
     Scaffold(
         modifier =
@@ -113,13 +156,27 @@ fun HomeScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Nav
                     Text(
                         titles[tab],
                         Modifier.widthIn(max = titleWidth).graphicsLayer {
-                            alpha =
+                            val expanded =
+                                if (tab == 0 && !reduceMotion)
+                                    1f - scrollBehavior.state.collapsedFraction.coerceIn(0f, 1f)
+                                else 0f
+                            val scale =
                                 if (tab == 0)
-                                    (scrollBehavior.state.collapsedFraction * 3f).coerceIn(0f, 1f)
+                                    collapsedTitleScale + (1f - collapsedTitleScale) * expanded
                                 else 1f
+                            transformOrigin =
+                                TransformOrigin(
+                                    if (layoutDirection == LayoutDirection.Ltr) 0f else 1f,
+                                    .5f,
+                                )
+                            scaleX = scale
+                            scaleY = scale
+                            translationY =
+                                (TopAppBarDefaults.CollapsedHeight.toPx() + size.height) / 2f *
+                                    expanded
                         },
                         color = MiuixTheme.colorScheme.onSurface,
-                        fontSize = MiuixTheme.textStyles.title3.fontSize,
+                        fontSize = if (tab == 0) largeTitleSize else smallTitleSize,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -133,7 +190,7 @@ fun HomeScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Nav
             if (tab == 0)
                 TopAppBar(
                     title = "",
-                    largeTitle = titles[tab],
+                    largeTitle = "",
                     navigationIcon = leadingTitle,
                     navigationIconPadding = 0.dp,
                     actions = headerActions,
@@ -166,16 +223,18 @@ fun HomeScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Nav
         LazyColumn(
             Modifier.fillMaxSize().padding(padding),
             state = listStates[tab],
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
+            contentPadding =
+                if (tab <= 1) PaddingValues(top = 8.dp, bottom = 24.dp)
+                else PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(if (tab <= 1) 0.dp else 12.dp),
         ) {
             if (tab == 0 && connection != ConnectionState.CONNECTED)
                 item("connection") {
                     Text(
-                        if (connectionError.isNotEmpty()) connectionError
-                        else if (connection == ConnectionState.CONNECTING) "连接中…"
+                        if (connection == ConnectionState.CONNECTING) "连接中…"
+                        else if (connectionError.isNotEmpty()) connectionError
                         else "离线 · 可查看已缓存的聊天",
-                        Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        Modifier.padding(horizontal = 32.dp, vertical = 4.dp),
                         fontSize = 13.sp,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
@@ -185,6 +244,7 @@ fun HomeScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Nav
                     TextField(
                         query,
                         { query = it },
+                        modifier = Modifier.padding(horizontal = 20.dp),
                         label = if (tab == 0) "搜索聊天" else "搜索联系人或群组",
                         singleLine = true,
                         leadingIcon = {
@@ -197,14 +257,12 @@ fun HomeScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Nav
                     )
                 }
                 item("filters") {
-                    TabRow(
+                    ConversationFilters(
                         if (tab == 0) listOf("全部", "未读", "关注", "群聊", "归档", "隐藏")
                         else listOf("好友", "群组"),
                         if (tab == 0) chatFilter else contactFilter,
                         { if (tab == 0) chatFilter = it else contactFilter = it },
-                        Modifier.padding(vertical = 8.dp),
                         minWidth = filterWidth,
-                        maxWidth = maxOf(98.dp, filterWidth),
                         height = filterHeight,
                     )
                 }
@@ -231,15 +289,11 @@ fun HomeScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Nav
                     )
                 }
             } else if (tab == 2) {
-                item { Card { MenuRow("好友动态", "查看与分享近况", "discover") { nav.open("feed") } } }
                 item {
                     Card {
+                        MenuRow("好友动态", "查看与分享近况", "discover") { nav.open("feed") }
                         MenuRow("小程序", "eMApps", "file") { nav.open("apps") }
                         MenuRow("发现群组", icon = "people") { nav.records("public") }
-                    }
-                }
-                item {
-                    Card {
                         MenuRow("扫一扫与名片", icon = "scan") { nav.open("qr") }
                         MenuRow("聊天记录", "搜索本机已缓存的消息", "search") { nav.search() }
                     }
@@ -279,6 +333,7 @@ fun HomeScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Nav
                             "通知与申请",
                             "${notices.value?.optInt("total_unread")?:0} 条未读",
                             "chat",
+                            badge = notices.value?.optInt("total_unread") ?: 0,
                         ) {
                             nav.records("notices")
                         }
@@ -308,6 +363,66 @@ fun HomeScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav: Nav
 }
 
 @Composable
+private fun ConversationFilters(
+    tabs: List<String>,
+    selected: Int,
+    onSelected: (Int) -> Unit,
+    minWidth: Dp,
+    height: Dp,
+) {
+    val colors = MiuixTheme.colorScheme
+    val reduce = LocalReducedMotion.current
+    val state = rememberLazyListState()
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val width = maxOf(minWidth, (maxWidth - 40.dp - 9.dp * (tabs.size - 1)) / tabs.size)
+        val centerOffset = with(LocalDensity.current) { ((maxWidth - width) / 2).roundToPx() }
+        LaunchedEffect(selected, centerOffset, reduce) {
+            if (reduce) state.scrollToItem(selected, -centerOffset)
+            else state.animateScrollToItem(selected, -centerOffset)
+        }
+        // Keep the scrolling viewport full-width and put the breathing room inside it.
+        LazyRow(
+            Modifier.fillMaxWidth().selectableGroup(),
+            state = state,
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            itemsIndexed(tabs, key = { _, title -> title }) { index, title ->
+                val active = index == selected
+                val background by
+                    animateColorAsState(
+                        if (active) colors.surfaceContainer else colors.surface,
+                        tween(if (reduce) 0 else RapidMotion.feedbackMillis),
+                    )
+                Box(
+                    Modifier.width(width)
+                        .height(height)
+                        .squircleClip(TabRowDefaults.TabRowCornerRadius)
+                        .background(background)
+                        .squircleBorder(
+                            width = { if (active) 0.dp else 1.dp },
+                            color = { colors.outline },
+                            cornerRadius = TabRowDefaults.TabRowCornerRadius,
+                        )
+                        .selectable(active, role = Role.Tab, onClick = { onSelected(index) })
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        title,
+                        fontSize = MiuixTheme.textStyles.body1.fontSize,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        color = if (active) colors.onBackground else colors.onSurfaceVariantSummary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ConversationRow(
     item: Conversation,
     repo: ChatRepository,
@@ -315,14 +430,21 @@ private fun ConversationRow(
     open: () -> Unit,
     menu: () -> Unit,
 ) {
+    val personalization = LocalPersonalization.current
+    val status =
+        remember(item.raw, item.group) {
+            val raw = JSONObject(item.raw)
+            if (item.group) raw.firstText("intro", "room_notice").ifEmpty { "群聊 · ID ${item.id}" }
+            else raw.firstText("online_status").ifEmpty { "暂无在线状态" }
+        }
     Row(
         Modifier.fillMaxWidth()
             .combinedClickable(onClick = open, onLongClick = menu)
-            .padding(vertical = 14.dp),
+            .padding(horizontal = 20.dp, vertical = if (personalization.compact) 10.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Avatar(item.name, repo.avatarUrl(item.avatar), 54)
+        Avatar(item.name, repo.avatarUrl(item.avatar), if (personalization.compact) 44 else 54)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -354,6 +476,7 @@ private fun ConversationRow(
             ) {
                 if (
                     item.draft.isEmpty() &&
+                        personalization.conversationSubtitle == ConversationSubtitle.MESSAGE &&
                         item.lastMessage?.sender == repo.account.uid &&
                         item.lastMessage?.time == item.updated &&
                         item.lastMessage?.preview == item.subtitle &&
@@ -362,6 +485,8 @@ private fun ConversationRow(
                     MessageReceipt(item.lastMessage?.read == true)
                 Text(
                     if (item.draft.isNotEmpty() && !contact) "草稿 · ${item.draft}"
+                    else if (personalization.conversationSubtitle == ConversationSubtitle.STATUS)
+                        status
                     else item.subtitle.ifEmpty { if (contact) "ID ${item.id}" else "开始聊天" },
                     fontSize = 14.sp,
                     maxLines = 1,

@@ -30,7 +30,7 @@ class HttpApi(
 
     fun resolve(path: String): String = base.resolve(path.trimStart('/'))?.toString().orEmpty()
 
-    private fun request(url: HttpUrl): Request.Builder =
+    internal fun request(url: HttpUrl): Request.Builder =
         Request.Builder().url(url).header("User-Agent", "CsAC-Android/0.1").apply {
             if (
                 url.scheme == base.scheme &&
@@ -149,7 +149,7 @@ class HttpApi(
         }
 }
 
-private suspend fun Call.awaitResponse(): Response = suspendCancellableCoroutine { continuation ->
+internal suspend fun Call.awaitResponse(): Response = suspendCancellableCoroutine { continuation ->
     continuation.invokeOnCancellation { cancel() }
     enqueue(
         object : Callback {

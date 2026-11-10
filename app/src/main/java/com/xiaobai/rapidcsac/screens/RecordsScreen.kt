@@ -25,7 +25,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private val recordTitles =
     mapOf(
-        "notices" to "通知中心",
         "mentions" to "提及与回复",
         "requests" to "好友申请",
         "applications" to "入群申请",
@@ -50,6 +49,10 @@ fun RecordsScreen(
     key: String,
     manage: Boolean,
 ) {
+    if (kind == "notices") {
+        NoticesScreen(repo, ui, nav)
+        return
+    }
     val context = LocalContext.current
     var canManage by remember { mutableStateOf(manage) }
     var owner by remember { mutableStateOf(false) }
@@ -65,7 +68,6 @@ fun RecordsScreen(
                     canManage = room.flag("is_admin") || owner
                 }
                 when (kind) {
-                    "notices" -> repo.execute("user/get_notice_list").objects("notices")
                     "mentions" ->
                         repo.execute("message/get_mentions", json("limit" to 100)).let {
                             it.objects("mentions") + it.objects("replies")
@@ -230,11 +232,6 @@ fun RecordsScreen(
             "common",
             "created" -> nav.detail(true, value.firstLong("room_id", "id"))
             "members" -> nav.detail(false, value.firstLong("uid", "id"))
-            "notices" ->
-                ui.confirm(title, value.optString("content")) {
-                    repo.execute("user/mark_notice_read", json("notice_id" to value.optLong("id")))
-                    remote.reload()
-                }
             "requests",
             "applications" ->
                 if (value.optInt("status") == 0)
@@ -273,24 +270,10 @@ fun RecordsScreen(
         nav::back,
         actions = {
             RapidIconButton(
-                if (kind in setOf("files", "notices")) "more" else "refresh",
-                if (kind == "files") "文件选项" else if (kind == "notices") "通知选项" else "刷新",
+                if (kind == "files") "more" else "refresh",
+                if (kind == "files") "文件选项" else "刷新",
             ) {
-                if (kind == "files") fileTools()
-                else if (kind == "notices")
-                    ui.actions(
-                        "通知选项",
-                        listOf(
-                            ActionItem("全部标为已读", "check") {
-                                ui.launch {
-                                    repo.execute("user/mark_notice_read", json("read_all" to 1))
-                                    remote.reload()
-                                }
-                            },
-                            ActionItem("刷新", "refresh") { remote.reload() },
-                        ),
-                    )
-                else remote.reload()
+                if (kind == "files") fileTools() else remote.reload()
             }
         },
     ) { padding ->
@@ -308,15 +291,6 @@ fun RecordsScreen(
                         listOf("today", "week", "month", "all").indexOf(period),
                         { period = listOf("today", "week", "month", "all")[it] },
                     )
-                }
-            if (kind == "notices")
-                item {
-                    Card {
-                        MenuRow("提及与回复", icon = "reply") { nav.records("mentions") }
-                        MenuRow("入群申请", icon = "people") { nav.records("applications") }
-                        MenuRow("好友申请", icon = "person") { nav.records("requests") }
-                        MenuRow("好友变动") { nav.records("friendchanges") }
-                    }
                 }
             item { RemoteStatus(remote) }
             val source = remote.value.orEmpty()
@@ -393,8 +367,6 @@ fun RecordsScreen(
                                 RapidIconButton("more", "文件选项") {
                                     fileMenu(value, repo, ui, id) { remote.reload() }
                                 }
-                            else if (kind == "notices" && !value.flag("is_read"))
-                                Text("未读", fontSize = 12.sp, color = MiuixTheme.colorScheme.primary)
                         },
                     ) {
                         Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -416,7 +388,6 @@ fun RecordsScreen(
 
 private fun recordTitle(kind: String, value: JSONObject, key: String) =
     when (kind) {
-        "notices" -> value.optString("title", "通知")
         "mentions" ->
             (if (value.optString("kind") == "reply") "回复 · " else "提及 · ") +
                 value.optString("room_name")
@@ -441,7 +412,6 @@ private fun recordTitle(kind: String, value: JSONObject, key: String) =
 
 private fun recordSummary(kind: String, value: JSONObject) =
     when (kind) {
-        "notices" -> value.optString("content")
         "essencestats" ->
             if (value.flag("_summary"))
                 "文字 ${value.optInt("text_count")} · 图片 ${value.optInt("image_count")} · 语音 ${value.optInt("voice_count")}"

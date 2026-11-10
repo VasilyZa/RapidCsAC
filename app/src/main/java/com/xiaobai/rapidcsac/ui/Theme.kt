@@ -7,13 +7,16 @@ import android.provider.Settings
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.Typeface
+import androidx.compose.ui.unit.Density
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xiaobai.rapidcsac.AppGraph
+import com.xiaobai.rapidcsac.platform.InterfaceFont
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.darkColorScheme
-import top.yukonga.miuix.kmp.theme.lightColorScheme
+import top.yukonga.miuix.kmp.theme.defaultTextStyles
 
 object RapidMotion {
     val easeOut = CubicBezierEasing(.23f, 1f, .32f, 1f)
@@ -27,6 +30,9 @@ val LocalDarkTheme = staticCompositionLocalOf { false }
 @Composable
 fun RapidTheme(graph: AppGraph, content: @Composable () -> Unit) {
     val preference by graph.theme.collectAsStateWithLifecycle()
+    val personalization by graph.personalization.style.collectAsStateWithLifecycle()
+    val wallpaper by graph.wallpapers.image.collectAsStateWithLifecycle()
+    val density = LocalDensity.current
     val reduce by graph.reducedMotion.collectAsStateWithLifecycle()
     val systemDark = isSystemInDarkTheme()
     val dark =
@@ -65,30 +71,52 @@ fun RapidTheme(graph: AppGraph, content: @Composable () -> Unit) {
         onDispose { context.contentResolver.unregisterContentObserver(observer) }
     }
     val colors =
-        remember(dark) {
-            if (dark)
-                darkColorScheme(
-                    primary = Color(0xFF9AB8FF),
-                    onPrimary = Color(0xFF14264C),
-                    primaryContainer = Color(0xFF223147),
-                    onSurfaceVariantSummary = Color(0xFFB0BACD),
-                    onSurfaceVariantActions = Color(0xFFB0BACD),
-                    onSecondaryContainer = Color(0xFFB0BACD),
-                )
-            else
-                lightColorScheme(
-                    primary = Color(0xFF4169D8),
-                    primaryVariant = Color(0xFF4169D8),
-                    primaryContainer = Color(0xFFEEF3FF),
-                    onSurfaceVariantSummary = Color(0xFF626D80),
-                    onSurfaceVariantActions = Color(0xFF626D80),
-                    onSecondaryContainer = Color(0xFF626D80),
-                )
+        remember(dark, personalization.accent, personalization.highContrast) {
+            personalizedColors(personalization, dark)
+        }
+    val typography =
+        remember(personalization.font) {
+            val family =
+                when (personalization.font) {
+                    InterfaceFont.SYSTEM -> FontFamily.Default
+                    InterfaceFont.SERIF -> FontFamily.Serif
+                    InterfaceFont.MONOSPACE -> FontFamily.Monospace
+                    InterfaceFont.ROUNDED ->
+                        FontFamily(
+                            Typeface(
+                                android.graphics.Typeface.create(
+                                    "sans-serif-rounded",
+                                    android.graphics.Typeface.NORMAL,
+                                )
+                            )
+                        )
+                }
+            val base = defaultTextStyles()
+            base.copy(
+                main = base.main.copy(fontFamily = family),
+                paragraph = base.paragraph.copy(fontFamily = family),
+                body1 = base.body1.copy(fontFamily = family),
+                body2 = base.body2.copy(fontFamily = family),
+                button = base.button.copy(fontFamily = family),
+                footnote1 = base.footnote1.copy(fontFamily = family),
+                footnote2 = base.footnote2.copy(fontFamily = family),
+                headline1 = base.headline1.copy(fontFamily = family),
+                headline2 = base.headline2.copy(fontFamily = family),
+                subtitle = base.subtitle.copy(fontFamily = family),
+                title1 = base.title1.copy(fontFamily = family),
+                title2 = base.title2.copy(fontFamily = family),
+                title3 = base.title3.copy(fontFamily = family),
+                title4 = base.title4.copy(fontFamily = family),
+            )
         }
     CompositionLocalProvider(
         LocalReducedMotion provides (reduce || systemReduced),
         LocalDarkTheme provides dark,
+        LocalPersonalization provides personalization,
+        LocalChatWallpaper provides wallpaper,
+        LocalDensity provides
+            Density(density.density, density.fontScale * personalization.fontScale),
     ) {
-        MiuixTheme(colors = colors, content = content)
+        MiuixTheme(colors = colors, textStyles = typography, content = content)
     }
 }

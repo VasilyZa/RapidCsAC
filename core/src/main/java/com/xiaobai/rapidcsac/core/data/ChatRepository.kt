@@ -20,12 +20,16 @@ import org.json.JSONObject
 class ChatRepository(context: Context, val account: Account, httpClient: OkHttpClient) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val ws = WsClient(httpClient, account.origin)
+    private val diagnostics =
+        NetworkDiagnostics(httpClient, account.origin, account.token, account.uid)
     val media = HttpApi(account.origin, { account.token }, httpClient)
     val moderation = ModerationRepository(media)
     private val store = ChatStore(context, account.key)
     private val syncLock = Mutex()
     private val sendLock = Mutex()
     private val ready = MutableStateFlow(false)
+    private val mutableReadyGeneration = MutableStateFlow(0L)
+    val readyGeneration = mutableReadyGeneration.asStateFlow()
     private var connectionJob: Job? = null
     private var methods = emptyMap<String, Boolean>()
     private val mutableConversations = MutableStateFlow<List<Conversation>>(emptyList())
@@ -34,7 +38,12 @@ class ChatRepository(context: Context, val account: Account, httpClient: OkHttpC
     val changes = version.asStateFlow()
     private val mutableUpdates = MutableSharedFlow<Set<String>>(extraBufferCapacity = 16)
     val updates = mutableUpdates.asSharedFlow()
-    val connection = ws.state
+    val connection =
+        combine(ws.state, ready) { state, isReady ->
+                if (state == ConnectionState.CONNECTED && !isReady) ConnectionState.CONNECTING
+                else state
+            }
+            .stateIn(scope, SharingStarted.Eagerly, ConnectionState.DISCONNECTED)
     private val mutableUser = MutableStateFlow(JSONObject())
     val user = mutableUser.asStateFlow()
     private val mutableError = MutableStateFlow("")
@@ -92,6 +101,7 @@ class ChatRepository(context: Context, val account: Account, httpClient: OkHttpC
                             }
                         synchronize(hello.getString("cursor"))
                         ready.value = true
+                        mutableReadyGeneration.update { it + 1 }
                     }
                     mutableError.value = ""
                     scope.launch { moderation.probe() }
@@ -549,6 +559,8 @@ class ChatRepository(context: Context, val account: Account, httpClient: OkHttpC
         .flowOn(Dispatchers.IO)
 
     suspend fun statistics(): Pair<Long, Long> = withContext(Dispatchers.IO) { store.statistics() }
+
+    fun diagnoseNetwork(): Flow<DiagnosticReport> = diagnostics.run { store.latestImageUrl() }
 
     suspend fun clearCache() =
         withContext(Dispatchers.IO) {

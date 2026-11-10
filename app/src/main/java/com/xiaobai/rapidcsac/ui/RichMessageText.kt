@@ -22,7 +22,13 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun RichMessageText(content: String) {
     val colors = MiuixTheme.colorScheme
-    val body = TextStyle(fontSize = 17.sp, lineHeight = 25.sp, color = colors.onSurface)
+    val body =
+        TextStyle(
+            fontSize = 17.sp,
+            lineHeight = 25.sp,
+            color = colors.onSurface,
+            fontFamily = MiuixTheme.textStyles.main.fontFamily,
+        )
     val heading = body.copy(fontWeight = FontWeight.SemiBold, fontSize = 21.sp)
     val uriHandler = LocalUriHandler.current
     CompositionLocalProvider(

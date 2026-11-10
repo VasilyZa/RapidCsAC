@@ -234,6 +234,20 @@ class ChatStore(context: Context, accountKey: String) :
         return messages to pending
     }
 
+    fun latestImageUrl(): String? =
+        readableDatabase
+            .rawQuery(
+                "SELECT body FROM messages WHERE content=? ORDER BY created DESC",
+                arrayOf("[图片]"),
+            )
+            .use { cursor ->
+                while (cursor.moveToNext()) {
+                    val message = Message.parse(JSONObject(cursor.getString(0)), "")
+                    if (!message.recalled && message.image.isNotBlank()) return@use message.image
+                }
+                null
+            }
+
     fun latest(key: String): Long =
         readableDatabase
             .rawQuery("SELECT MAX(id) FROM messages WHERE conversation=?", arrayOf(key))

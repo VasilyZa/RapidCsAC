@@ -12,7 +12,10 @@ import com.xiaobai.rapidcsac.core.network.*
 import com.xiaobai.rapidcsac.core.security.Account
 import com.xiaobai.rapidcsac.core.security.SessionVault
 import com.xiaobai.rapidcsac.platform.BackgroundSync
+import com.xiaobai.rapidcsac.platform.ChatWallpaperStore
+import com.xiaobai.rapidcsac.platform.MessageDisplayPreferences
 import com.xiaobai.rapidcsac.platform.Notifications
+import com.xiaobai.rapidcsac.platform.PersonalizationPreferences
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +54,9 @@ class RapidApplication : Application(), ImageLoaderFactory {
 class AppGraph(val context: Context) : DefaultLifecycleObserver {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val preferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    val messageDisplay = MessageDisplayPreferences(preferences)
+    val personalization = PersonalizationPreferences(preferences)
+    val wallpapers = ChatWallpaperStore(context, preferences)
     val vault = SessionVault(context)
     val http =
         OkHttpClient.Builder()

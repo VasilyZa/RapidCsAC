@@ -11,6 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -22,7 +25,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 
 @Composable
 fun ChatPicker(
@@ -63,11 +65,9 @@ fun ChatPicker(
             loading = false
         }
     }
-    OverlayBottomSheet(
-        modifier = Modifier.navigationBarsPadding(),
+    CompactSheet(
         show = show,
         title = if (members) "提及成员" else "表情",
-        startAction = { RapidIconButton("close", "关闭", !busy, dismiss) },
         allowDismiss = !busy,
         onDismissRequest = { if (!busy) dismiss() },
         onDismissFinished = {
@@ -75,7 +75,10 @@ fun ChatPicker(
             selected = emptySet()
         },
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            Modifier.heightIn(max = LocalWindowInfo.current.containerDpSize.height * .75f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             TextField(
                 query,
                 { query = it },
@@ -89,19 +92,28 @@ fun ChatPicker(
             }
             if (members) {
                 LazyColumn(
-                    Modifier.heightIn(max = LocalWindowInfo.current.containerDpSize.height * .45f)
+                    Modifier.weight(1f, fill = false)
+                        .heightIn(max = LocalWindowInfo.current.containerDpSize.height * .45f)
                 ) {
                     items(filtered, key = { it.firstLong("uid", "id") }) { member ->
                         val uid = member.firstLong("uid", "id")
-                        BasicComponent(
-                            startAction = {
+                        CompactSheetRow(
+                            title = member.optString("nickname"),
+                            modifier =
+                                Modifier.semantics {
+                                    toggleableState =
+                                        if (uid in selected) ToggleableState.On
+                                        else ToggleableState.Off
+                                },
+                            role = Role.Checkbox,
+                            leading = {
                                 Avatar(
                                     member.optString("nickname"),
                                     repo.avatarUrl(member.optString("avatar")),
-                                    40,
+                                    32,
                                 )
                             },
-                            endActions = {
+                            trailing = {
                                 Checkbox(
                                     if (uid in selected) ToggleableState.On
                                     else ToggleableState.Off,
@@ -111,9 +123,7 @@ fun ChatPicker(
                             onClick = {
                                 selected = if (uid in selected) selected - uid else selected + uid
                             },
-                        ) {
-                            Text(member.optString("nickname"))
-                        }
+                        )
                     }
                 }
                 PrimaryButton(
@@ -127,7 +137,8 @@ fun ChatPicker(
             } else
                 LazyVerticalGrid(
                     GridCells.Adaptive(76.dp),
-                    Modifier.heightIn(max = LocalWindowInfo.current.containerDpSize.height * .5f),
+                    Modifier.weight(1f, fill = false)
+                        .heightIn(max = LocalWindowInfo.current.containerDpSize.height * .5f),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {

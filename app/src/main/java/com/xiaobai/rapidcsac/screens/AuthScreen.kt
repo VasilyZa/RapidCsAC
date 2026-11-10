@@ -56,7 +56,7 @@ fun AuthScreen(graph: AppGraph, ui: UiController) {
                 )
                 Text("RapidCsAC", fontSize = 34.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    if (registering) "创建你的账户" else "登录，继续聊天",
+                    if (registering) "创建你的账户" else "登录以继续聊天",
                     fontSize = 18.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
@@ -140,9 +140,20 @@ fun AuthScreen(graph: AppGraph, ui: UiController) {
                 ) {
                     Text(if (registering) "已有账户，登录" else "创建账户")
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Button({ emailOptions(graph, ui, origin) }, enabled = !busy) { Text("邮箱与找回") }
-                    Button({ savedAccounts(graph, ui) }, enabled = !busy) { Text("已保存账户") }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Button(
+                        { emailOptions(graph, ui, origin) },
+                        Modifier.weight(1f),
+                        enabled = !busy,
+                    ) {
+                        Text("邮箱与找回")
+                    }
+                    Button({ savedAccounts(graph, ui) }, Modifier.weight(1f), enabled = !busy) {
+                        Text("已保存账户")
+                    }
                 }
                 Spacer(Modifier.weight(1f, fill = false))
                 BasicComponent(
