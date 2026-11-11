@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.view.WindowManager
 import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,8 +40,19 @@ class Navigation(private val controller: NavHostController) {
 
     fun detail(group: Boolean, id: Long) = open("detail/${if (group) "group" else "user"}/$id")
 
-    fun records(kind: String, id: Long = 0, key: String = "", manage: Boolean = false) =
-        open("records/$kind?id=$id&key=${Uri.encode(key)}&manage=$manage")
+    fun records(kind: String, id: Long = 0, key: String = "", manage: Boolean = false) {
+        // Record categories share a destination, so reuse only an entry with matching arguments.
+        val samePage =
+            controller.currentBackStackEntry?.arguments?.let { arguments ->
+                arguments.getString("kind") == kind &&
+                    arguments.getLong("id") == id &&
+                    arguments.getString("key") == key &&
+                    arguments.getBoolean("manage") == manage
+            } ?: false
+        controller.navigate("records/$kind?id=$id&key=${Uri.encode(key)}&manage=$manage") {
+            launchSingleTop = samePage
+        }
+    }
 
     fun search(key: String = "") = open("search?key=${Uri.encode(key)}")
 
@@ -162,26 +172,11 @@ private fun AccountNavigation(
             NavHost(
                 navController = controller,
                 startDestination = "home",
-                enterTransition = {
-                    if (reduce) fadeIn(tween(100))
-                    else
-                        slideInHorizontally(
-                            tween(RapidMotion.navigationMillis, easing = RapidMotion.easeOut)
-                        ) {
-                            it / 8
-                        } + fadeIn(tween(160))
-                },
-                exitTransition = { fadeOut(tween(100)) },
-                popEnterTransition = { fadeIn(tween(if (reduce) 100 else 180)) },
-                popExitTransition = {
-                    if (reduce) fadeOut(tween(100))
-                    else
-                        slideOutHorizontally(
-                            tween(RapidMotion.navigationMillis, easing = RapidMotion.easeOut)
-                        ) {
-                            it / 8
-                        } + fadeOut(tween(160))
-                },
+                enterTransition = { pageEnterTransition(reduce) },
+                // Keep the covered page in place until the incoming page fully covers it.
+                exitTransition = { ExitTransition.KeepUntilTransitionsFinished },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { pagePopExitTransition(reduce) },
             ) {
                 composable("home") { HomeScreen(graph, repo, ui, nav) }
                 composable("moderation") { ModerationScreen(repo, ui, nav) }
@@ -253,6 +248,7 @@ private fun AccountNavigation(
                     SearchScreen(repo, ui, nav, entry.arguments!!.getString("key")!!)
                 }
                 composable("settings") { SettingsScreen(graph, repo, ui, nav) }
+                composable("about") { AboutScreen(ui, nav, repo.account.origin) }
                 composable("personalization") { PersonalizationScreen(graph, ui, nav) }
                 composable("message-display") { MessageDisplayScreen(graph, ui, nav) }
                 composable("licenses") { LicensesScreen(nav) }

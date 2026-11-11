@@ -273,7 +273,7 @@ fun ImageScreen(
                     }
             }
             AsyncImage(
-                url,
+                rememberMediaRequest(url),
                 "图片，可双指缩放或双击放大",
                 Modifier.sharedMedia(tag)
                     .fillMaxSize()

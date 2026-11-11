@@ -213,7 +213,7 @@ fun MessageItem(
                         )
                     message.image.isNotEmpty() ->
                         AsyncImage(
-                            resolve(message.image),
+                            rememberMediaRequest(resolve(message.image)),
                             if (message.type == 5) "表情" else "图片，点按查看",
                             Modifier.sharedMedia(mediaTag)
                                 .widthIn(min = 120.dp, max = 260.dp)

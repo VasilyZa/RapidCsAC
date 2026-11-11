@@ -2,13 +2,27 @@ package com.xiaobai.rapidcsac.ui
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import coil.request.ImageRequest
 
 val LocalSharedMediaScope = compositionLocalOf<SharedTransitionScope?> { null }
 val LocalMediaVisibilityScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
+
+@Composable
+fun rememberMediaRequest(url: String): ImageRequest {
+    val context = LocalContext.current
+    return remember(context, url) {
+        ImageRequest.Builder(context)
+            .data(url)
+            .memoryCacheKey(url)
+            .placeholderMemoryCacheKey(url)
+            .build()
+    }
+}
 
 @Composable
 fun Modifier.sharedMedia(key: String): Modifier {
@@ -20,9 +34,7 @@ fun Modifier.sharedMedia(key: String): Modifier {
         this@sharedMedia.sharedElement(
             rememberSharedContentState(key),
             visibility,
-            boundsTransform = { _, _ ->
-                tween(RapidMotion.navigationMillis, easing = RapidMotion.easeOut)
-            },
+            boundsTransform = { _, _ -> RapidMotion.navigationSpec() },
         )
     }
 }

@@ -53,7 +53,7 @@ jobs:
       - name: Build and check
         run: ./gradlew --no-daemon --no-configuration-cache :app:assembleDebug :app:lintDebug
 
-      - name: Build and verify signed APK
+      - name: Build and verify signed APKs
         id: sign
         if: >-
           github.event_name != 'pull_request' &&
@@ -75,25 +75,41 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
           unset ANDROID_KEYSTORE_BASE64
 
-          ./gradlew --no-daemon --no-configuration-cache :app:assembleRelease
+          ./gradlew --no-daemon --no-configuration-cache :app:assembleRelease -PcsacSplitAbis=true
 
           sdk_tools="$ANDROID_HOME/build-tools/36.0.0"
-          apk="app/build/outputs/apk/release/app-release.apk"
-          "$sdk_tools/apksigner" verify --min-sdk-version 24 --print-certs "$apk" > "$RUNNER_TEMP/signing-report.txt"
-          actual_certificate=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/signing-report.txt")
           expected_certificate=$(tr -d '\r\n' < .github/signing-certificate.sha256)
-          test "$actual_certificate" = "$expected_certificate"
+          version=""
+          version_code=""
+          mkdir -p dist
+          for abi in arm64-v8a armeabi-v7a; do
+            apk="app/build/outputs/apk/release/app-$abi-release.apk"
+            "$sdk_tools/apksigner" verify --min-sdk-version 24 --print-certs "$apk" > "$RUNNER_TEMP/signing-report-$abi.txt"
+            actual_certificate=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/signing-report-$abi.txt")
+            test "$actual_certificate" = "$expected_certificate"
 
-          version=$("$sdk_tools/aapt" dump badging "$apk" | sed -n "1s/.*versionName='\([^']*\)'.*/\1/p")
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+            badging=$("$sdk_tools/aapt" dump badging "$apk")
+            apk_version=$(sed -n "1s/.*versionName='\([^']*\)'.*/\1/p" <<< "$badging")
+            apk_version_code=$(sed -n "1s/.*versionCode='\([^']*\)'.*/\1/p" <<< "$badging")
+            native_code=$(sed -n 's/^native-code: //p' <<< "$badging")
+            [[ "$apk_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+            [[ "$apk_version_code" =~ ^[1-9][0-9]*$ ]]
+            test "$native_code" = "'$abi'"
+            if [[ -z "$version" ]]; then
+              version="$apk_version"
+              version_code="$apk_version_code"
+            fi
+            test "$apk_version" = "$version"
+            test "$apk_version_code" = "$version_code"
+            cp "$apk" "dist/RapidCsAC-$version-$abi.apk"
+          done
+
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             test "$GITHUB_REF_NAME" = "v$version"
           fi
 
-          mkdir -p dist
-          cp "$apk" "dist/RapidCsAC-$version.apk"
           cp LICENSE .github/signing-certificate.sha256 dist/
-          (cd dist && sha256sum "RapidCsAC-$version.apk" > SHA256SUMS)
+          (cd dist && sha256sum "RapidCsAC-$version-arm64-v8a.apk" "RapidCsAC-$version-armeabi-v7a.apk" > SHA256SUMS)
 
       - name: Upload signed APK
         if: steps.sign.outcome == 'success'

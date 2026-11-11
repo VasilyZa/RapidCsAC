@@ -351,11 +351,11 @@ fun DetailScreen(
                                             }
                                         }
                                     } else
-                                        MenuRow("恢复好友关系") {
-                                            ui.confirm("恢复好友", "恢复与 $name 的好友关系？") {
+                                        MenuRow("解除拉黑并恢复好友") {
+                                            ui.confirm("解除拉黑", "解除对 $name 的拉黑并恢复好友关系？") {
                                                 repo.execute(
                                                     "friend/recover_friend",
-                                                    json("friend_id" to id),
+                                                    json("friend_id" to id, "direct" to true),
                                                 )
                                                 repo.refresh()
                                                 remote.reload()

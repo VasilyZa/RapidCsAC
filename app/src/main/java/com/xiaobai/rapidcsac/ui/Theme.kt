@@ -5,6 +5,10 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.FloatSpringSpec
+import androidx.compose.animation.core.TweenSpec
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -15,13 +19,36 @@ import androidx.compose.ui.unit.Density
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xiaobai.rapidcsac.AppGraph
 import com.xiaobai.rapidcsac.platform.InterfaceFont
+import kotlin.math.PI
+import kotlin.math.pow
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.defaultTextStyles
 
 object RapidMotion {
     val easeOut = CubicBezierEasing(.23f, 1f, .32f, 1f)
-    const val navigationMillis = 220
+    const val navigationMillis = 500
     const val feedbackMillis = 140
+    const val ambientCycleMillis = 24_000
+
+    // Miuix's navigation curve uses response 0.8 and damping 0.95 over a fixed 500 ms.
+    private val navigationSpring =
+        FloatSpringSpec(
+            dampingRatio = .95f,
+            stiffness = (2.0 * PI / .8).pow(2).toFloat(),
+            visibilityThreshold = .000001f,
+        )
+    private val navigationEasing = Easing { fraction ->
+        if (fraction >= 1f) 1f
+        else
+            navigationSpring.getValueFromNanos(
+                (fraction * 1_000_000_000L).toLong(),
+                initialValue = 0f,
+                targetValue = 1f,
+                initialVelocity = 0f,
+            )
+    }
+
+    fun <T> navigationSpec(): TweenSpec<T> = tween(navigationMillis, easing = navigationEasing)
 }
 
 val LocalReducedMotion = staticCompositionLocalOf { false }

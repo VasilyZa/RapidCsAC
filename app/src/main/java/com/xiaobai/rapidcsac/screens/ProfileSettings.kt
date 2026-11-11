@@ -253,11 +253,12 @@ fun SettingsScreen(graph: AppGraph, repo: ChatRepository, ui: UiController, nav:
                         }
                     }
                     MenuRow("开源许可", "第三方库与许可全文") { nav.open("licenses") }
-                    BasicComponent(
-                        title = "RapidCsAC",
-                        summary =
-                            "${BuildConfig.VERSION_NAME} · ${repo.account.origin.removePrefix("https://")}",
-                    )
+                    MenuRow(
+                        "关于",
+                        "RapidCsAC ${BuildConfig.VERSION_NAME} · ${repo.account.origin.removePrefix("https://")}",
+                    ) {
+                        nav.open("about")
+                    }
                 }
             }
             item {
